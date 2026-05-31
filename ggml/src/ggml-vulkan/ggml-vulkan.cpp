@@ -14314,6 +14314,22 @@ static ggml_status ggml_backend_vk_graph_compute(ggml_backend_t backend, ggml_cg
 
     ggml_vk_submit_transfer_ctx(ctx);
 
+#ifdef GGML_VULKAN_CHECK_RESULTS
+    if (!ctx->compute_ctx.expired()) {
+        vk_context cctx = ctx->compute_ctx.lock();
+        ggml_vk_ctx_end(cctx);
+        for (auto& cpy : cctx->in_memcpys) {
+            memcpy(cpy.dst, cpy.src, cpy.n);
+        }
+        ggml_vk_submit(cctx, {});
+        ctx->compute_ctx.reset();
+    }
+    ctx->device->compute_queue.queue.waitIdle();
+    if (ctx->device->async_use_transfer_queue) {
+        ctx->device->transfer_queue.queue.waitIdle();
+    }
+#endif
+
     vk_context compute_ctx;
     if (vk_perf_logger_enabled) {
         // allocate/resize the query pool
